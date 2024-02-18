@@ -1,67 +1,122 @@
-# -*- coding: utf-8 -*-
-"""
-Created on Sun Feb 11 19:02:07 2024
-
-@author: nadie
-"""
-
 from sklearn.datasets import load_breast_cancer
-import numpy as np
 import pandas as pd
+import numpy as np
 from matplotlib import pyplot as plt
+from sklearn.preprocessing import MinMaxScaler
+
+# =============================================================================
+# APARTADO 1 
+# Se describe las dimensiones del dataset, contando con 30 características y
+# 2 categorías, personas que generan la enfermedad y aquellas que no.
+# =============================================================================
 
 X, y = load_breast_cancer(return_X_y=True)
 
-# =============================================================================
-# Apartado 1
-# 
-# - Quitar features que no sean representativas?
-# =============================================================================
+num_samples, num_features = X.shape
+_, num_categories = np.unique(y, return_counts=True)
 
+print('Number of samples in the dataset: ', num_samples)
+print('Number of features in the dataset: ', num_features)
+print('Number of categories in the dataset: ', num_categories.size)
+print('Samples in first category: ', num_categories[0])
+print('Samples in second category: ', num_categories[1])
+
+# =============================================================================
+# APARTADO 1 
+
+# Con el fin de entender la naturaleza de las features se ha decidido represen-
+# tar cada una de ellas junto con la label de si se padece la enfermedad o no, 
+# así se pueden seleccionar aquellas características que más discriminen entre 
+# las dos posibles categorías, es decir, las más representativas
+# =============================================================================
 objects, features = np.shape(X)
 categories, frequency = np.unique(y, return_counts=True)
 
-print(f'El dataset tiene {features} características por cada elemento.')
+print(f'El dataset tiene {features} características por cada elemento.\n')
 print('Hay dos categorías.\n')
 
 for i, category in enumerate(categories):
     print(f'Categoría {category}: {frequency[i]} elementos')
-    print(f'Porcentaje de clase {i}: {frequency[i]/objects*100}\n')
 
 # for i in range(features):
 #     plt.figure()
 #     plt.title(f'Feature {i}')
-#     plt.scatter(X[:,i], range(objects), s=1, c=y)
+#     plt.scatter(X[:,i], range(objects), s=1, c=y);
+
+# Visionando las features de manera gráfica se consideran que las más represen-
+# tativas son la: 0,2,3,5,6,7,10,12,13,16,20,22,23,26,27
+
+# Por lo tanto se va a crear un dataframe que solo contenga esas features:
+
+df_mostWantedFeatures = pd.DataFrame(X)
+columnas_no_deseadas = [1,4,8,9,11,14,15,17,18,19,21,24,25,28,29]
+# Se eliminan las features no deseadas
+df_mostWantedFeatures = df_mostWantedFeatures.drop(columnas_no_deseadas, axis=1)
 
 # =============================================================================
-# Apartado 2
-#
-# - Mirar outlayers que se repiten entre features
-# - Escalar para el boxplot?
+# APARTADO 2
+
+# En esta apartado se realiza un estudio estadistico de las features a través
+# del uso de un box plot con el fin de localizar los outliers, esta información
+# puede ser útil con el fin de conseguir clasificar algunas muestras dentro de
+# una categoría en concreto
 # =============================================================================
 
+# Se normaliza para una mejor visualización de las features y outliers
+XboxPlot = df_mostWantedFeatures # con todas las features y o con las 15 representativas? supongo que con las 15
+miEscalador = MinMaxScaler()
+miEscalador.fit(df_mostWantedFeatures)
+XboxPlot_esc = miEscalador.transform(XboxPlot)
+
+#plt.boxplot(X[:,23])
 plt.figure()
-plt.boxplot(X)
+plt.boxplot(XboxPlot_esc)
+
+# Agregar etiquetas y título
+plt.xlabel('Features') # en el gráfico no sale el numero de feature correcto, solo la enumeracion del 1 al 15
+plt.ylabel('Values')
+plt.title('FEATURES BOXPLOT ESCALADO')
+
+# Mostrar el boxplot
+plt.show()  ## AL RUNEAR EL CODIGO ENTERO SE RAYA, SI LO RANEAS POR SEPARADO SALE BIEN
+
+## Handcrafted method para localizar los outlier de cada característica
 
 def valStadistics(data,columna):
     df = pd.DataFrame(data)
+    #Primer cuartil
     Q1 = df[columna].quantile(0.25)
+    #Tercer cuartil
     Q3 = df[columna].quantile(0.75)
+    #Rango intercuartil
     IQR = Q3-Q1
-
+    #Bigote inferior
     BI = Q1 - 1.5 * IQR
+    #Bigote superior
     BS = Q3 + 1.5 * IQR
-    
     return BI, BS
-    
+
 def detectOutliers(data,columna):
     BI,BS = valStadistics(data, columna)
     df = pd.DataFrame(data)
     filasOutliers = (df[columna] < BI) | (df[columna] > BS)
+    #outliers = data[filasOutliers,columna]
     outliers = df.loc[filasOutliers, [columna]]
     return outliers
+
+# Se ha pensado que obteniendo los outliers de cada caracteristica, de aquellas,
+# consideradas representativas, se podría determinar si una muestra/persona 
+# padece la enfermedad si cumple la condición de ser outlier en todas las
+# features.
+
+outliers = []
+for feature in [0,2,3,5,6,7,10,12,13,16,20,22,23,26,27]:
+    outliers.append(detectOutliers(df_mostWantedFeatures,feature))
     
-outliers = detectOutliers(X, 0)
+indices_comunes = set(outliers[0].index)
+
+for df in outliers[1:]:
+    indices_comunes = indices_comunes.intersection(set(df.index))    
 
 # =============================================================================
 # Apartado 3
@@ -93,7 +148,7 @@ miKNN = KNeighborsClassifier(n_neighbors=miK)
 miKNN.fit(Xtrain_esc,ytrain)
 ypred = miKNN.predict(Xtest_esc)
 
-print(f'accuracy para k=2: {accuracy_score(ytest,ypred)}\n')
+print(accuracy_score(ytest,ypred))
 
 
 miParamGrid = {'weights':['uniform','distance'],
@@ -110,7 +165,8 @@ miMejorModelo.fit(Xtrain_esc,ytrain)
 
 ypred = miMejorModelo.predict(Xtest_esc)
 
-print(f'Accuracy con grid search kfolds: {accuracy_score(ytest,ypred)}\n')
+print(f'miGSCV: {miGSCV.best_estimator_.get_params()}')
+print(f'Accuracy con grid search kfolds {accuracy_score(ytest,ypred)}')
 
 # =============================================================================
 # Apartado 4
